@@ -156,3 +156,36 @@ hinanden fra terminalprogrammet:
 
 Adresse 0x0024 er DDRB, så den første kommando sætter bit 2 som output.
 Adresse 0x0025 er PORTB, så den anden kommando sætter bit 2 høj.
+
+Opgave 4
+--------
+
+Formål
+------
+Programmet demonstrerer brugen af en ekstern interrupt på INT0 sammen med
+Timer1 og to UART-forbindelser. Et signal på PD2 udløser en tælling.
+Programmet sender tællingen til begge UART-forbindelser og blinker samtidig
+den grønne LED én gang i sekundet.
+
+Ekstern interrupt INT0
+----------------------
+INT0 er tilsluttet PD2. Pinden konfigureres som input med intern pull-up, og
+interruptet aktiveres på en stigende flanke. Når interruptet udløses, øges
+external_count, og external_event sættes. Hovedprogrammet sender derefter
+tællingen til både UART0 og UART1 med teksten "Ekstern interrupt: 1".
+
+Timer1 og sekundtæller
+---------------------
+Timer1 kører i CTC-tilstand med en præskaler på 256. I opgaven bruges et
+interval på 1000 ms. Ved hvert timer-interrupt skifter den grønne LED på
+PB1 tilstand, og timer_second_flag sættes. Hovedprogrammet nulstiller flaget,
+øger seconds og sender den nye værdi på UART1 med formatet "Sekund: 1".
+
+UART og test
+------------
+Begge UART-kanaler er indstillet til 9600 baud, 8 databits, ingen paritet og
+1 stopbit (8N1). UART0 konverterer modtagne små bogstaver til store bogstaver,
+mens UART1 konverterer store bogstaver til små bogstaver og sender tegnet
+tilbage. Tilslut en seriel terminal, udløs INT0 på PD2, og kontrollér at
+tællingen vises på begge UART-forbindelser. Sekundtælleren skal stige én
+gang pr. sekund på UART1.
