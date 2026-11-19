@@ -1,0 +1,158 @@
+Beskrivelse af softwaren
+
+Formål
+-------
+Programmet kører på en ATmega328PB med en klokfrekvens på 16 MHz. Det blinker
+en LED på PB1 og modtager tegn via UART0. Modtagne bogstaver skifter mellem
+stort og lille og sendes derefter tilbage til computeren.
+
+Opstart
+-------
+I main.c sættes PB1 som udgang. Timer1 startes med et interval på 500 ms.
+UART0 konfigureres til 9600 baud, 8 databits, ingen paritet og 1 stopbit.
+Programmet registrerer ConvertReceivedChar som tilbagekaldsfunktion for
+UART-modtagelsen og aktiverer derefter interrupts globalt.
+
+LED og Timer1
+-------------
+Timer1 bruger CTC-tilstand og en præskaler på 256. Ved 16 MHz tæller timeren
+med 62.500 klokpulser pr. sekund. Sammenligningsværdien beregnes ud fra det
+ønskede interval. Hver gang Timer1 når sammenligningsværdien, udføres
+timerens interrupt-rutine, som skifter PB1 mellem høj og lav. LED'ens tilstand
+ændres derfor hver 500 ms, svarende til en hel tænd/sluk-cyklus på cirka
+1 sekund.
+
+UART og tegnkonvertering
+------------------------
+UART-driveren modtager tegn ved hjælp af et interrupt, så hovedprogrammet ikke
+behøver at vente på input. Modtagerutinen læser tegnet og kalder den
+registrerede funktion. ConvertReceivedChar ændrer kun bogstaver fra A til Z
+eller a til z. Funktionen bruger XOR med værdien 0x20 til at skifte mellem
+stort og lille bogstav. Tal, mellemrum og tegnsætning ændres ikke. Det
+konverterede tegn sendes derefter tilbage via UART, så det kan ses i
+computerens serielle terminal.
+
+Hovedprogram
+------------
+Efter initialiseringen venter programmet i en tom while-løkke. Timer- og
+UART-arbejdet udføres asynkront i deres interrupt-rutiner. Den serielle
+terminal skal være indstillet til 9600 baud og 8N1.
+
+
+Opgave 2
+--------
+
+Clock og UART
+-------------
+CPU-clocken på det testede board er cirka 8 MHz. F_CPU er derfor sat til
+8.000.000 Hz i ProjectDefines.h. Både UART0 og UART1 bruger 9600 baud og 8N1
+(8 databits, ingen paritet, 1 stopbit). UART0 modtager og sender. UART1
+sender via PB3/TXD1 til RXD på CP2102, som har fælles GND med boardet.
+
+Timer1 og sekundtælleren
+------------------------
+Timer1 kører i CTC-tilstand med en præskaler på 256. Ved 8 MHz får timeren
+31.250 tik pr. sekund. OCR1A er derfor 31.249, fordi timeren tæller fra 0.
+Hvert sekund skifter interrupt-rutinen LED'ens tilstand på PB1 og sætter
+timer_second_flag. Main-løkken nulstiller flaget atomisk, øger tælleren og
+lægger linjen "Sekunder efter opstart: 1" i UART1's sendekø. Næste gang
+skrives 2 osv. Interrupt-rutinen håndterer kun LED'en og flaget.
+
+Modtagelse og videresendelse
+----------------------------
+Main-løkken tjekker, om der er et tegn klar på UART0. Bogstaverne A-Z og
+a-z får skiftet mellem stort og lille. Tal, mellemrum og tegnsætning
+sendes videre uændret. Main-løkken sender tegnet tilbage på UART0 og
+lægger det også i UART1's sendekø. UART1 får ét tegn ad gangen, når dens
+senderegister er ledigt. Dermed kan main-løkken stadig læse UART0, mens
+UART1 sender en sekundlinje.
+
+Prøve i Serial Monitor
+----------------------
+Vælg CP2102's port (COM13 på denne PC) og 9600 baud, 8N1. Efter opstart
+skal tælleren stige med én pr. sekund. Send f.eks. "Hej 123!" på UART0
+med linjeskift. "hEJ 123!" skal kunne ses på begge porte.
+
+
+Opgave 3
+--------
+
+Formål
+-------
+Programmet modtager kommandoer fra en PC gennem UART0. En kommando angiver en
+registeradresse, en bit-position og den værdi, som bitten skal have.
+Programmet bruger en pointer til den modtagne adresse og sætter eller rydder
+kun den udpegede bit. Resultatet skrives tilbage på UART0, så det kan ses i et
+terminalprogram.
+
+UART og opstart
+---------------
+UART0 er indstillet til 9600 baud, 8 databits, ingen paritet og 1 stopbit
+(8N1). UART0-modtagelse foregår i et receive-interrupt. Interrupt-rutinen
+gemmer kun det modtagne tegn i en cirkulær kø; hovedløkken tager derefter
+tegnene ud af køen og behandler dem. Dermed bliver interruptet kort, mens
+selve UART-udskrifter og registerændringer foregår uden for interruptet.
+
+Tilstandsmaskine
+----------------
+Programmet styres af enum-typen Tilstand med tre tilstande:
+
+  Modtag_Adresse
+  Modtag_Bit_Position_I_Adresse
+  Modtag_Bit_Positon_Vaerdi
+
+Ved opstart er tilstanden Modtag_Adresse. Hver gang programmet skifter
+tilstand, udskrives den nye tilstand og den forventede indtastning på UART0.
+CR og LF ignoreres, så terminalprogrammet gerne må sende linjeskift.
+
+Modtag_Adresse
+--------------
+Her modtages en hexadecimal adresse. Adressen kan skrives med eller uden
+0x-prefix, for eksempel 0x0025 eller 0025. Et kolon (:) afslutter adressen.
+Efter en gyldig adresse konverteres teksten til en 16-bit værdi, og pointeren
+valgt_adresse sættes til den pågældende data-adresse. Tilstanden skifter
+derefter til Modtag_Bit_Position_I_Adresse. Ugyldig tekst eller en adresse
+uden hex-cifre sender programmet tilbage til Modtag_Adresse.
+
+Modtag_Bit_Position_I_Adresse
+------------------------------
+Her skal PC'en sende et enkelt ciffer fra 0 til 7. Cifret gemmes som den
+ønskede bit-position, og programmet skifter til Modtag_Bit_Positon_Vaerdi.
+Alle andre tegn er ugyldige og sender programmet tilbage til Modtag_Adresse.
+
+Modtag_Bit_Positon_Vaerdi
+-------------------------
+Her skal PC'en sende 0 eller 1. Programmet danner masken 1 << bit_position.
+Ved værdien 1 bruges bitvis OR til at sætte den valgte bit:
+
+  *valgt_adresse |= maske;
+
+Ved værdien 0 bruges bitvis AND med den inverterede maske til at rydde den:
+
+  *valgt_adresse &= ~maske;
+
+Begge operationer bevarer alle andre bits i registeret. Ved ugyldig bitværdi
+udføres ingen registerændring. Efter et gyldigt eller ugyldigt værditegn
+vender programmet tilbage til Modtag_Adresse.
+
+Resultat på UART0
+-----------------
+Efter en gyldig bit-operation udskrives følgende fire linjer:
+
+  Adresse: 0x0025
+  Bit position: 2
+  Bit værdi: 1
+  Bitmønster: 0000 0100
+
+Bitmønsteret viser altid den aktuelle 8 bit værdi på den valgte adresse.
+
+Eksempel
+--------
+For at gøre PB2 til udgang og derefter sætte PB2 høj, sendes disse tegn efter
+hinanden fra terminalprogrammet:
+
+  0x0024:21
+  0x0025:21
+
+Adresse 0x0024 er DDRB, så den første kommando sætter bit 2 som output.
+Adresse 0x0025 er PORTB, så den anden kommando sætter bit 2 høj.
